@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Simulation - EV Fault Detection</title>
+    
+    <!-- External Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/theme.css') }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-hover: #3a56d4;
+            --secondary: #eef2ff;
+            --success: #2ec4b6;
+            --success-soft: #d1fae5;
+            --warning: #ff9f1c;
+            --warning-soft: #fef3c7;
+            --danger: #e71d36;
+            --danger-soft: #fee2e2;
+            --dark: #2b2d42;
+            --dark-soft: #8d99ae;
+            --light: #f8f9fa;
+            --white: #ffffff;
+            
+            --card-bg: var(--white);
+            --card-radius: 16px;
+            --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            --card-border: 1px solid rgba(0, 0, 0, 0.03);
+            
+            --nav-height: 70px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: var(--dark);
+            padding-top: calc(var(--nav-height) + 20px);
+            padding-bottom: 40px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Navbar Styling */
+        .app-nav {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            height: var(--nav-height);
+            box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .navbar-brand {
+            font-weight: 700;
+            color: var(--primary) !important;
+            font-size: 1.25rem;
+            letter-spacing: -0.5px;
+        }
+        .nav-link {
+            font-weight: 500;
+            color: var(--dark-soft) !important;
+            margin: 0 10px;
+            transition: color 0.3s;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: var(--primary) !important;
+        }
+
+        /* Card Containers */
+        .simulation-card, .data-table-container, .chart-container {
+            background: var(--card-bg);
+            border-radius: var(--card-radius);
+            box-shadow: var(--card-shadow);
+            border: var(--card-border);
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .simulation-card {
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Status Indicator */
+        .status-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+        
+        .status-indicator {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+            font-size: 1.5rem;
+            color: white;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+        }
+
+        .status-running { 
+            background: linear-gradient(135deg, var(--success), #20c997); 
+            box-shadow: 0 0 0 0 rgba(46, 196, 182, 0.7);
+            animation: pulse-green 2s infinite;
+        }
+        
+        .status-stopped { 
+            background: linear-gradient(135deg, #6c757d, #adb5bd); 
+        }
+
+        @keyframes pulse-green {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46, 196, 182, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(46, 196, 182, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46, 196, 182, 0); }
+        }
+
+        /* Controls */
+        .btn-control {
+            padding: 10px 24px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            border: none;
+            color: white;
+            display: inline-flex;
+            align-items: center;
+        }
+        .btn-control:active { transform: translateY(1px); }
+        
+        .btn-start { background: linear-gradient(45deg, var(--success), #20c997); }
+        .btn-stop { background: linear-gradient(45deg, var(--danger), #ff6b6b); }
+        .btn-reset { background: linear-gradient(45deg, #6c757d, #868e96); }
+        
+        .btn-test-fault {
+            background: linear-gradient(45deg, var(--warning), #ffb703);
+            color: #000;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+            width: 100%;
+        }
+        @media (max-width: 575px) {
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+        .stat-item {
+            background: var(--secondary);
+            border-radius: 12px;
+            padding: 1rem;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--primary);
+        }
+        .stat-value { font-size: 1.75rem; font-weight: 700; color: var(--primary); line-height: 1; margin-bottom: 5px; }
+        .stat-label { font-size: 0.8rem; color: var(--dark-soft); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Charts */
+        .chart-container {
+            padding: 1.25rem;
+            min-height: 280px;
+            display: flex;
+            flex-direction: column;
+        }
+        .section-heading {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--dark);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        canvas {
+            flex: 1;
+            width: 100% !important;
+            height: 100% !important;
+            max-height: 220px;
+        }
+
+        /* Data Table */
+        .data-table-container { padding: 0; display: flex; flex-direction: column; }
+        .table-header {
+            padding: 1.25rem 1.25rem 0.5rem 1.25rem;
+            border-bottom: 1px solid #f1f1f1;
+        }
+        .table-responsive {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+        .data-table {
+            font-size: 0.85rem;
+            margin-bottom: 0;
+        }
+        .data-table thead th {
+            background: #f8f9fa;
+            color: var(--dark-soft);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            padding: 12px 15px;
+            border-bottom: 2px solid #e9ecef;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .data-table td {
+            padding: 12px 15px;
+            vertical-align: middle;
+            border-bottom: 1px solid #f1f1f1;
+            color: var(--dark);
+        }
+        .data-table tbody tr:hover { background-color: #f8faff; }
+
+        /* Badges */
+        .risk-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .risk-safe { background: var(--success-soft); color: var(--success); }
+        .risk-warning { background: var(--warning-soft); color: #d97706; }
+        .risk-danger { background: var(--danger-soft); color: var(--danger); animation: pulse-red 2s infinite; }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(231, 29, 54, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(231, 29, 54, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 29, 54, 0); }
+        }
+
+        /* Range Slider */
+        .speed-control-wrapper {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 12px;
+            border: 1px solid #eee;
+            margin-top: 15px;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 991px) {
+            .status-wrapper { margin-bottom: 20px; }
+            .control-group { margin-bottom: 20px; text-align: center; }
+            .btn-control { width: 100%; justify-content: center; margin-bottom: 10px; }
+            .speed-control-wrapper { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+ <body>
+     <nav class="navbar navbar-expand-lg navbar-light fixed-top app-nav">
+         <div class="container">
+             <a class="navbar-brand" href="/">
+                 <i class="fas fa-charging-station me-2"></i>EV Fault Detect
+             </a>
+             <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                 <span class="navbar-toggler-icon"></span>
+             </button>
+             <div class="collapse navbar-collapse" id="navbarNav">
+                 <ul class="navbar-nav ms-auto">
+                     <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+                     <li class="nav-item"><a class="nav-link" href="/detection">Detection</a></li>
+                     <li class="nav-item"><a class="nav-link active" href="/simulation">Simulation</a></li>
+                     <li class="nav-item"><a class="nav-link" href="/analytics">Analytics</a></li>
+                 </ul>
+             </div>
+         </div>
+     </nav>
+
+    <div class="container main-wrap">
+        <!-- Simulation Control Panel -->
+        <div class="row g-4 mb-2">
+            <div class="col-12">
+                <div class="simulation-card">
+                    <div class="row h-100">
+                        <!-- Status Column -->
+                        <div class="col-md-3 col-lg-2 d-flex">
+                            <div class="status-wrapper w-100">
+                                <div id="simulationStatus" class="status-indicator status-stopped">
+                                    <i class="fas fa-power-off"></i>
+                                </div>
+                                <div class="text-center mt-2">
+                                    <h5 id="statusText" class="fw-bold mb-1">Ready</h5>
+                                    <small id="systemStateText" class="text-muted d-block">System Initialized</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Controls Column -->
+                        <div class="col-md-5 col-lg-6">
+                            <div class="control-group h-100">
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                    <button id="startBtn" class="btn btn-control btn-start" onclick="startSimulation()">
+                                        <i class="fas fa-play me-2"></i>Start
+                                    </button>
+                                    <button id="stopBtn" class="btn btn-control btn-stop" onclick="stopSimulation()" disabled>
+                                        <i class="fas fa-stop me-2"></i>Stop
+                                    </button>
+                                    <button class="btn btn-control btn-reset" onclick="resetSimulation()">
+                                        <i class="fas fa-redo me-2"></i>Reset
+                                    </button>
+                                    <button class="btn btn-control btn-test-fault" onclick="triggerDemoFault()">
+                                        <i class="fas fa-bolt me-2"></i>Inject Fault
+                                    </button>
+                                </div>
+                                
+                                <div class="speed-control-wrapper">
+                                    <label class="form-label mb-0 small fw-bold text-muted">
+                                        <i class="fas fa-tachometer-alt me-1"></i> Update Speed
+                                    </label>
+                                    <input type="range" class="form-range" id="speedSlider" min="100" max="2000" step="100" value="1000" style="width: 120px;">
+                                    <span id="speedValue" class="fw-bold small text-primary">1000ms</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stats Column -->
+                        <div class="col-md-4 col-lg-4 d-flex">
+                            <div class="stats-grid">
+                                <div class="stat-item">
+                                    <div class="stat-value" id="dataPoints">0</div>
+                                    <div class="stat-label">Data Points</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-value text-danger" id="faultCount">0</div>
+                                    <div class="stat-label">Faults Detected</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="row g-4 mb-2">
+            <div class="col-12 col-sm-6 col-xl-4">
+                <div class="chart-container">
+                    <div class="section-heading">
+                        <span><i class="fas fa-bolt text-warning me-2"></i>Voltage (V)</span>
+                    </div>
+                    <div style="position: relative; height: 220px;">
+                        <canvas id="voltageChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-xl-4">
+                <div class="chart-container">
+                    <div class="section-heading">
+                        <span><i class="fas fa-plug text-info me-2"></i>Current (A)</span>
+                    </div>
+                    <div style="position: relative; height: 220px;">
+                        <canvas id="currentChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-xl-4">
+                <div class="chart-container">
+                    <div class="section-heading">
+                        <span><i class="fas fa-thermometer-half text-danger me-2"></i>Temperature (°C)</span>
+                    </div>
+                    <div style="position: relative; height: 220px;">
+                        <canvas id="temperatureChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-xl-4">
+                <div class="chart-container">
+                    <div class="section-heading">
+                        <span><i class="fas fa-cog text-primary me-2"></i>Motor Speed (RPM)</span>
+                    </div>
+                    <div style="position: relative; height: 220px;">
+                        <canvas id="motorSpeedChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-xl-4">
+                <div class="chart-container">
+                    <div class="section-heading">
+                        <span><i class="fas fa-battery-three-quarters text-success me-2"></i>Battery SOC (%)</span>
+                    </div>
+                    <div style="position: relative; height: 220px;">
+                        <canvas id="socChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-xl-4">
+                <div class="chart-container">
+                    <div class="section-heading">
+                        <span><i class="fas fa-exclamation-triangle text-secondary me-2"></i>Risk Probability</span>
+                        <span class="badge bg-light text-dark border">Threshold: 0.6</span>
+                    </div>
+                    <div style="position: relative; height: 220px;">
+                        <canvas id="riskChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="row g-4">
+            <div class="col-12">
+                <div class="data-table-container">
+                    <div class="table-header">
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-list me-2 text-primary"></i>Live Data Records</h5>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover data-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Voltage (V)</th>
+                                    <th>Current (A)</th>
+                                    <th>Temp (°C)</th>
+                                    <th>Motor (RPM)</th>
+                                    <th>SOC (%)</th>
+                                    <th>Risk Prob.</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataTableBody">
+                                <tr>
+                                    <td colspan="8" class="text-center text-muted py-5">
+                                        <div class="mb-2"><i class="fas fa-satellite-dish fa-2x text-secondary opacity-25"></i></div>
+                                        System ready. Click 'Start' to begin simulation.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // --- Configuration & State ---
+        let simulationInterval;
+        let simulationSpeed = 1000;
+        let dataPointCount = 0;
+        let faultDetectionCount = 0;
+        let simulationData = [];
+        let isRunning = false;
+        let lastTimeStep = -1;
+        
+        let faultInjectionMode = false;
+        let faultInjectionTimer = null;
+
+        const maxDataPoints = 50;
+        const maxTableRows = 20;
+
+        // --- Chart Configuration ---
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(43, 45, 66, 0.9)',
+                    titleFont: { family: 'Inter', size: 13 },
+                    bodyFont: { family: 'Inter', size: 12 },
+                    padding: 10,
+                    cornerRadius: 8,
+                    displayColors: false
+                }
+            },
+            scales: {
+                x: { display: false },
+                y: { 
+                    grid: { color: '#f3f4f6', borderDash: [5, 5] },
+                    ticks: { font: { family: 'Inter', size: 10 } }
+                }
+            },
+            elements: {
+                line: { tension: 0.4, borderWidth: 2 },
+                point: { radius: 0, hitRadius: 10, hoverRadius: 4 }
+            }
+        };
+
+        const charts = {};
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', function() {
+            initCharts();
+            
+            // Slider listener
+            const slider = document.getElementById('speedSlider');
+            slider.addEventListener('input', (e) => {
+                simulationSpeed = parseInt(e.target.value);
+                document.getElementById('speedValue').textContent = simulationSpeed + 'ms';
+                fetch('/api/sim/control', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ interval_ms: simulationSpeed })
+                }).catch(() => {});
+            });
+        });
+
+        async function fetchLatest() {
+            const resp = await fetch('/api/latest', { cache: 'no-store' });
+            if (!resp.ok) throw new Error('Failed to fetch latest');
+            return await resp.json();
+        }
+
+        function initCharts() {
+            const createChart = (ctx, color, label, min, max) => {
+                return new Chart(ctx, {
+                    type: 'line',
+                    data: { 
+                        labels: Array(maxDataPoints).fill(''),
+                        datasets: [{
+                            label: label,
+                            data: Array(maxDataPoints).fill(null),
+                            borderColor: color,
+                            backgroundColor: (context) => {
+                                const bg = context.chart.ctx.createLinearGradient(0, 0, 0, 200);
+                                bg.addColorStop(0, color + '33'); // 20% opacity
+                                bg.addColorStop(1, color + '00'); // 0% opacity
+                                return bg;
+                            },
+                            fill: true,
+                        }]
+                    },
+                    options: {
+                        ...commonOptions,
+                        scales: {
+                            ...commonOptions.scales,
+                            y: { ...commonOptions.scales.y, suggestedMin: min, suggestedMax: max }
+                        }
+                    }
+                });
+            };
+
+            charts.voltage = createChart(document.getElementById('voltageChart'), '#ff9f1c', 'Voltage', 350, 450);
+            charts.current = createChart(document.getElementById('currentChart'), '#4cc9f0', 'Current', 0, 200);
+            charts.temperature = createChart(document.getElementById('temperatureChart'), '#e71d36', 'Temperature', 20, 80);
+            charts.motorSpeed = createChart(document.getElementById('motorSpeedChart'), '#4361ee', 'RPM', 0, 3000);
+            charts.soc = createChart(document.getElementById('socChart'), '#2ec4b6', 'SOC', 0, 100);
+
+            // Special handling for Risk Chart
+            const ctxRisk = document.getElementById('riskChart').getContext('2d');
+            charts.risk = new Chart(ctxRisk, {
+                type: 'line',
+                data: {
+                    labels: Array(maxDataPoints).fill(''),
+                    datasets: [
+                        {
+                            label: 'Risk',
+                            data: Array(maxDataPoints).fill(null),
+                            borderColor: '#ff595e',
+                            backgroundColor: '#ff595e33',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Threshold',
+                            data: Array(maxDataPoints).fill(0.6),
+                            borderColor: '#ef476f',
+                            borderWidth: 1.5,
+                            borderDash: [6, 6],
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        ...commonOptions.scales,
+                        y: { 
+                            ...commonOptions.scales.y, 
+                            min: 0, 
+                            max: 1, 
+                            ticks: { callback: (v) => v * 100 + '%' } 
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateSimulation() {
+            fetchLatest().then((data) => {
+                if (typeof data.time_step === 'number' && data.time_step === lastTimeStep) return;
+                if (typeof data.time_step === 'number') lastTimeStep = data.time_step;
+                updateCharts(data);
+                updateDataTable(data);
+                updateStats(data);
+            }).catch(() => {});
+        }
+
+        // --- UI Updates ---
+        function updateCharts(data) {
+            // Shift logic handled inside chart update or manually
+            // We want to slide the array
+            const updateChartData = (chart, value) => {
+                const dataset = chart.data.datasets[0].data;
+                if (dataset.length >= maxDataPoints) dataset.shift();
+                dataset.push(value);
+                chart.update('none');
+            };
+
+            const updateRiskChart = (chart, value) => {
+                const riskData = chart.data.datasets[0].data;
+                const threshData = chart.data.datasets[1].data;
+                if (riskData.length >= maxDataPoints) {
+                    riskData.shift();
+                    threshData.shift();
+                }
+                riskData.push(value);
+                threshData.push(0.6);
+                chart.update('none');
+            };
+
+            updateChartData(charts.voltage, data.current_data.voltage);
+            updateChartData(charts.current, data.current_data.current);
+            updateChartData(charts.temperature, data.current_data.temperature);
+            updateChartData(charts.motorSpeed, data.current_data.motor_speed);
+            updateChartData(charts.soc, data.current_data.soc);
+            updateRiskChart(charts.risk, data.risk_probability);
+        }
+
+        function updateDataTable(data) {
+            const tableBody = document.getElementById('dataTableBody');
+            
+            // Remove placeholder if present
+            if (dataPointCount === 0) {
+                tableBody.innerHTML = '';
+            }
+
+            const riskClass = data.risk_status === 'SAFE' ? 'risk-safe' : 
+                              data.risk_status === 'WARNING' ? 'risk-warning' : 'risk-danger';
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="text-muted small">${new Date().toLocaleTimeString()}</td>
+                <td class="fw-semibold">${data.current_data.voltage.toFixed(1)}</td>
+                <td>${data.current_data.current.toFixed(1)}</td>
+                <td class="${data.current_data.temperature > 55 ? 'text-danger fw-bold' : ''}">${data.current_data.temperature.toFixed(1)}</td>
+                <td>${Math.round(data.current_data.motor_speed)}</td>
+                <td>${data.current_data.soc.toFixed(1)}%</td>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress" style="width: 50px; height: 6px;">
+                            <div class="progress-bar ${data.risk_probability > 0.6 ? 'bg-danger' : 'bg-primary'}" 
+                                 style="width: ${data.risk_probability * 100}%"></div>
+                        </div>
+                        <span class="small">${(data.risk_probability * 100).toFixed(0)}%</span>
+                    </div>
+                </td>
+                <td><span class="risk-badge ${riskClass}">${data.risk_status}</span></td>
+            `;
+
+            // Insert at top
+            tableBody.insertBefore(row, tableBody.firstChild);
+
+            // Trim rows
+            while (tableBody.children.length > maxTableRows) {
+                tableBody.removeChild(tableBody.lastChild);
+            }
+        }
+
+        function updateStats(data) {
+            dataPointCount++;
+            document.getElementById('dataPoints').innerText = dataPointCount;
+
+            if (data.risk_status === 'UNSAFE') {
+                faultDetectionCount++;
+                const faultEl = document.getElementById('faultCount');
+                faultEl.innerText = faultDetectionCount;
+                // Visual feedback for fault
+                faultEl.parentElement.parentElement.classList.add('animate__animated', 'animate__headShake');
+                setTimeout(() => faultEl.parentElement.parentElement.classList.remove('animate__animated', 'animate__headShake'), 1000);
+            }
+        }
+
+        // --- Control Functions ---
+        function startSimulation() {
+            if (isRunning) return;
+            isRunning = true;
+            
+            // UI: Enable/Disable buttons
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            
+            // UI: Update Status Indicator
+            const statusIndicator = document.getElementById('simulationStatus');
+            statusIndicator.className = 'status-indicator status-running';
+            statusIndicator.innerHTML = '<i class="fas fa-play"></i>'; // Play icon inside circle
+            
+            // UI: Update Text
+            document.getElementById('statusText').textContent = 'Running';
+            document.getElementById('statusText').className = 'fw-bold mb-1 text-success';
+            document.getElementById('systemStateText').textContent = 'Live Monitoring Active';
+
+            fetch('/api/sim/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'start', interval_ms: simulationSpeed })
+            }).catch(() => {});
+
+            simulationInterval = setInterval(updateSimulation, 250);
+        }
+
+        function stopSimulation(resetUI = true) {
+            isRunning = false;
+            clearInterval(simulationInterval);
+
+            fetch('/api/sim/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'stop' })
+            }).catch(() => {});
+            
+            if (resetUI) {
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('stopBtn').disabled = true;
+                
+                // UI: Update Status Indicator
+                const statusIndicator = document.getElementById('simulationStatus');
+                statusIndicator.className = 'status-indicator status-stopped'; // Grey circle
+                statusIndicator.innerHTML = '<i class="fas fa-pause"></i>'; // Pause icon
+                
+                // UI: Update Text
+                document.getElementById('statusText').textContent = 'Paused';
+                document.getElementById('statusText').className = 'fw-bold mb-1 text-muted';
+                document.getElementById('systemStateText').textContent = 'Data Stream Halted';
+            }
+        }
+
+        function resetSimulation() {
+            stopSimulation();
+            fetch('/reset', { cache: 'no-store' }).catch(() => {});
+ // Halt first
+            
+            // Reset Counts
+            dataPointCount = 0;
+            faultDetectionCount = 0;
+            document.getElementById('dataPoints').innerText = '0';
+            document.getElementById('faultCount').innerText = '0';
+
+            // Clear Charts
+            Object.values(charts).forEach(chart => {
+                chart.data.datasets.forEach(ds => {
+                    ds.data = ds.data.map(() => null); 
+                });
+                chart.update();
+            });
+
+            // Clear Table
+            const tableBody = document.getElementById('dataTableBody');
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-5">
+                        <div class="mb-2"><i class="fas fa-satellite-dish fa-2x text-secondary opacity-25"></i></div>
+                        System ready. Click 'Start' to begin simulation.
+                    </td>
+                </tr>
+            `;
+            
+            // UI: Update Status Indicator to "Power Off" state (initial state)
+            const statusIndicator = document.getElementById('simulationStatus');
+            statusIndicator.className = 'status-indicator status-stopped';
+            statusIndicator.innerHTML = '<i class="fas fa-power-off"></i>';
+            
+            // UI: Update Text to "Ready"
+            document.getElementById('statusText').textContent = 'Ready';
+            document.getElementById('statusText').className = 'fw-bold mb-1 text-dark';
+            document.getElementById('systemStateText').textContent = 'System Initialized';
+        }
+
+        function triggerDemoFault() {
+            fetch('/api/demo-fault', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ steps: 6 })
+            }).catch(() => {});
+
+            // Show toast notification
+            const toast = document.createElement('div');
+            toast.className = 'alert alert-danger alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-5 shadow-lg';
+            toast.style.zIndex = '1060';
+            toast.style.minWidth = '300px';
+            toast.innerHTML = `
+                <strong><i class="fas fa-radiation me-2"></i>Fault Injection!</strong>
+                <div class="small">Requesting a scheduled fault cycle from the dataset stream.</div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(toast);
+            
+            // Auto dismiss toast
+            setTimeout(() => { if(toast) toast.remove(); }, 4000);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Detection - EV Fault Detection</title>
+    
+    <!-- External Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/theme.css') }}" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --primary: #4361ee;
+            --success: #2ec4b6;
+            --warning: #ff9f1c;
+            --danger: #e71d36;
+            --dark: #2b2d42;
+            --dark-soft: #8d99ae;
+            --light: #f8f9fa;
+            --white: #ffffff;
+            --bg-body: #f3f4f6;
+            
+            --card-bg: var(--white);
+            --card-radius: 16px;
+            --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            --nav-height: 70px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--dark);
+            padding-top: calc(var(--nav-height) + 20px);
+            padding-bottom: 40px;
+        }
+
+        /* Navbar */
+        .app-nav {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            height: var(--nav-height);
+            box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .navbar-brand { font-weight: 700; color: var(--primary) !important; }
+        .nav-link { color: var(--dark-soft) !important; font-weight: 500; margin: 0 10px; }
+        .nav-link.active { color: var(--primary) !important; }
+
+        /* Card Containers */
+        .status-card, .control-panel, .chart-container, .sensor-card {
+            background: var(--card-bg);
+            border-radius: var(--card-radius);
+            box-shadow: var(--card-shadow);
+            border: 1px solid rgba(0,0,0,0.03);
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+
+        /* Left Column Sidebar - Sticky */
+        .sidebar-col {
+            position: sticky;
+            top: calc(var(--nav-height) + 20px);
+            height: calc(100vh - var(--nav-height) - 40px);
+            overflow-y: auto;
+        }
+
+        .status-card { padding: 2rem 1.5rem; text-align: center; }
+        .control-panel { padding: 1.5rem; }
+
+        /* Status Indicator */
+        .status-indicator-wrapper {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 1.5rem;
+        }
+        .status-indicator {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            font-size: 2.5rem;
+            color: white;
+            transition: all 0.4s ease;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            position: relative;
+            z-index: 2;
+        }
+        .status-safe { background: linear-gradient(135deg, var(--success), #20c997); }
+        .status-unsafe { background: linear-gradient(135deg, var(--danger), #ff6b6b); animation: pulse-danger 2s infinite; }
+        .status-stopped { background: linear-gradient(135deg, #6c757d, #adb5bd); }
+
+        @keyframes pulse-danger {
+            0% { box-shadow: 0 0 0 0 rgba(231, 29, 54, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(231, 29, 54, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 29, 54, 0); }
+        }
+
+        .risk-probability {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1;
+            margin: 0.5rem 0;
+        }
+
+        /* Controls */
+        .btn-control {
+            width: 100%;
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+            border: none;
+        }
+        .btn-control:active { transform: scale(0.98); }
+        .btn-start { background: var(--primary); color: white; }
+        .btn-stop { background: var(--danger); color: white; }
+        .btn-reset { background: #6c757d; color: white; }
+        .btn-test { background: var(--warning); color: #000; }
+
+        /* Sensor Grid */
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 1rem;
+        }
+        .sensor-item {
+            background: var(--light);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+            border: 1px solid transparent;
+            transition: all 0.3s;
+        }
+        .sensor-item:hover { border-color: var(--primary); transform: translateY(-2px); }
+        .sensor-value { font-size: 1.4rem; font-weight: 700; color: var(--dark); display: block; }
+        .sensor-name { font-size: 0.75rem; color: var(--dark-soft); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 5px; }
+
+        /* Charts */
+        .chart-container { padding: 1.5rem; height: 400px; display: flex; flex-direction: column; }
+        .chart-wrapper { flex: 1; position: relative; min-height: 0; }
+
+        /* Advanced Metrics */
+        .advanced-metrics {
+            background: var(--light);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1.5rem;
+            text-align: left;
+        }
+        .progress { height: 6px; border-radius: 3px; background-color: #e9ecef; margin-top: 5px; }
+        .progress-bar { transition: width 0.5s ease; }
+
+        /* Fault Categories */
+        .fault-category {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(220, 53, 69, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(220, 53, 69, 0.2);
+        }
+        .fault-normal {
+            background: rgba(40, 167, 69, 0.1);
+            color: var(--success);
+            border-color: rgba(40, 167, 69, 0.2);
+        }
+
+        /* Sound Toggle */
+        .sound-toggle {
+            position: fixed;
+            top: calc(var(--nav-height) + 20px);
+            right: 20px;
+            background: var(--white);
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--card-shadow);
+            cursor: pointer;
+            transition: transform 0.2s;
+            z-index: 1000;
+            border: 1px solid #eee;
+            color: var(--dark-soft);
+        }
+        .sound-toggle:hover { transform: scale(1.1); color: var(--primary); }
+        .sound-toggle.active { color: var(--success); }
+        .sound-toggle.muted { color: var(--danger); }
+
+        /* Responsive */
+        @media (max-width: 991px) {
+            .sidebar-col { position: relative; height: auto; top: 0; overflow: visible; }
+        }
+    </style>
+</head>
+ <body>
+     <nav class="navbar navbar-expand-lg navbar-light fixed-top app-nav">
+         <div class="container">
+             <a class="navbar-brand" href="/">
+                 <i class="fas fa-charging-station me-2"></i>EV Fault Detect
+             </a>
+             <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                 <span class="navbar-toggler-icon"></span>
+             </button>
+             <div class="collapse navbar-collapse" id="navbarNav">
+                 <ul class="navbar-nav ms-auto">
+                     <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+                     <li class="nav-item"><a class="nav-link active" href="/detection">Detection</a></li>
+                     <li class="nav-item"><a class="nav-link" href="/simulation">Simulation</a></li>
+                     <li class="nav-item"><a class="nav-link" href="/analytics">Analytics</a></li>
+                 </ul>
+             </div>
+         </div>
+     </nav>
+
+    <!-- Sound Toggle -->
+    <div class="sound-toggle active" id="soundToggle" onclick="toggleSound()" title="Toggle Sound Alerts">
+        <i class="fas fa-volume-up"></i>
+    </div>
+
+    <div class="container main-wrap">
+        <div class="row g-4">
+            <!-- Left Sidebar: Status & Controls -->
+            <div class="col-12 col-lg-4 sidebar-col">
+                <!-- Status Card -->
+                <div class="status-card">
+                    <h6 class="text-muted text-uppercase fw-bold mb-3" style="letter-spacing: 1px;">System Status</h6>
+                    
+                    <div class="status-indicator-wrapper">
+                        <div id="statusIndicator" class="status-indicator status-stopped">
+                            <i class="fas fa-shield-alt"></i>
+                        </div>
+                    </div>
+                    
+                    <h2 id="statusText" class="fw-bold mb-0 text-muted">IDLE</h2>
+                    <div id="riskProbability" class="risk-probability text-muted">0.0%</div>
+                    <small class="text-uppercase text-muted">Risk Probability</small>
+
+                    <!-- Advanced Metrics -->
+                    <div class="advanced-metrics">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small text-muted">Analysis</span>
+                            <span id="faultCategories"><span class="fault-category fault-normal">NORMAL</span></span>
+                        </div>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span>Response</span>
+                                <span id="responseTimeText">0ms</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-info" id="responseTimeBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span>Efficiency</span>
+                                <span id="efficiencyText">100%</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-success" id="efficiencyBar" style="width: 100%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control Panel -->
+                <div class="control-panel">
+                    <h6 class="text-muted text-uppercase fw-bold mb-3" style="letter-spacing: 1px;">Controls</h6>
+                    <div class="d-grid gap-2">
+                        <button id="startBtn" class="btn btn-control btn-start" onclick="startDetection()">
+                            <i class="fas fa-play me-2"></i>Start Detection
+                        </button>
+                        <button id="stopBtn" class="btn btn-control btn-stop" onclick="stopDetection()" disabled>
+                            <i class="fas fa-stop me-2"></i>Stop Detection
+                        </button>
+                        <button class="btn btn-control btn-reset" onclick="resetDetection()">
+                            <i class="fas fa-redo me-2"></i>Reset System
+                        </button>
+                        <button class="btn btn-control btn-test" onclick="triggerDemoFault()">
+                            <i class="fas fa-bug me-2"></i>Inject Fault (Demo)
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4 pt-3 border-top">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="text-muted">Time Step</span>
+                            <span id="timeStep" class="fw-bold">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between small">
+                            <span class="text-muted">System Health</span>
+                            <span id="systemHealth" class="fw-bold text-success">OPTIMAL</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Chart & Sensors -->
+            <div class="col-12 col-lg-8">
+                <!-- Risk Chart -->
+                <div class="chart-container">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold mb-0">Risk Probability Trend</h5>
+                        <span class="badge bg-light text-dark border">Live</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="riskChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Sensor Grid -->
+                <div class="sensor-card p-4">
+                    <h5 class="fw-bold mb-3">Real-time Sensor Data</h5>
+                    <div class="sensor-grid">
+                        <div class="sensor-item">
+                            <span class="sensor-value" id="voltage">0.0</span>
+                            <span class="sensor-name">Voltage (V)</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span class="sensor-value" id="current">0.0</span>
+                            <span class="sensor-name">Current (A)</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span class="sensor-value" id="temperature">0.0</span>
+                            <span class="sensor-name">Temp (°C)</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span class="sensor-value" id="motorSpeed">0</span>
+                            <span class="sensor-name">Motor (RPM)</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span class="sensor-value" id="soc">0.0</span>
+                            <span class="sensor-name">SOC (%)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alert Section -->
+                <div id="alertSection"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // --- Configuration & State ---
+        let detectionInterval;
+        let riskChart;
+        let riskData = [];
+        let timeLabels = [];
+        let soundEnabled = true;
+        let isRunning = false;
+        let stepCount = 0;
+        let faultInjectionMode = false;
+        let lastTimeStep = -1;
+        let maxDataPoints = 60;
+        
+        // Audio Context
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playAlertSound(type) {
+            if (!soundEnabled) return;
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            
+            if (type === 'fault') {
+                osc.frequency.value = 800; osc.type = 'sawtooth';
+                gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+                osc.start(); osc.stop(audioContext.currentTime + 0.4);
+            } else if (type === 'safe') {
+                osc.frequency.value = 400; osc.type = 'sine';
+                gain.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gain.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.2);
+                osc.start(); osc.stop(audioContext.currentTime + 0.2);
+            }
+        }
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const btn = document.getElementById('soundToggle');
+            const icon = btn.querySelector('i');
+            
+            if(soundEnabled) {
+                btn.classList.remove('muted');
+                btn.classList.add('active');
+                icon.className = 'fas fa-volume-up';
+            } else {
+                btn.classList.add('muted');
+                btn.classList.remove('active');
+                icon.className = 'fas fa-volume-mute';
+            }
+        }
+
+        // --- Chart Initialization ---
+        function initChart() {
+            const ctx = document.getElementById('riskChart').getContext('2d');
+            
+            // Create gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(231, 29, 54, 0.2)');
+            gradient.addColorStop(1, 'rgba(231, 29, 54, 0.0)');
+
+            riskChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timeLabels,
+                    datasets: [{
+                        label: 'Risk',
+                        data: riskData,
+                        borderColor: '#e71d36',
+                        backgroundColor: gradient,
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(43, 45, 66, 0.9)',
+                            callbacks: { label: (ctx) => 'Risk: ' + (ctx.parsed.y * 100).toFixed(1) + '%' }
+                        }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: {
+                            min: 0, max: 1.1,
+                            grid: { color: '#f3f4f6' },
+                            ticks: { callback: (v) => v * 100 + '%' }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function fetchLatest() {
+            const resp = await fetch('/api/latest', { cache: 'no-store' });
+            if (!resp.ok) throw new Error('Failed to fetch latest');
+            return await resp.json();
+        }
+
+        // --- UI Updates ---
+        function updateDisplay(data) {
+            if (typeof data.time_step === 'number' && data.time_step === lastTimeStep) return;
+            if (typeof data.time_step === 'number') lastTimeStep = data.time_step;
+
+            // Update Text
+            document.getElementById('timeStep').textContent = data.time_step;
+            document.getElementById('riskProbability').textContent = (data.risk_probability * 100).toFixed(1) + '%';
+            
+            const statusEl = document.getElementById('statusText');
+            const indicatorEl = document.getElementById('statusIndicator');
+            const riskEl = document.getElementById('riskProbability');
+            const healthEl = document.getElementById('systemHealth');
+
+            if (data.risk_status === 'UNSAFE') {
+                statusEl.textContent = 'CRITICAL';
+                statusEl.className = 'fw-bold mb-0 text-danger';
+                indicatorEl.className = 'status-indicator status-unsafe';
+                indicatorEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+                riskEl.className = 'risk-probability text-danger';
+                healthEl.textContent = 'CRITICAL';
+                healthEl.className = 'fw-bold text-danger';
+                
+                playAlertSound('fault');
+            } else {
+                statusEl.textContent = 'SAFE';
+                statusEl.className = 'fw-bold mb-0 text-success';
+                indicatorEl.className = 'status-indicator status-safe';
+                indicatorEl.innerHTML = '<i class="fas fa-shield-alt"></i>';
+                riskEl.className = 'risk-probability text-success';
+                healthEl.textContent = 'OPTIMAL';
+                healthEl.className = 'fw-bold text-success';
+            }
+
+            // Update Sensors
+            document.getElementById('voltage').textContent = data.current_data.voltage.toFixed(1);
+            document.getElementById('current').textContent = data.current_data.current.toFixed(1);
+            document.getElementById('temperature').textContent = data.current_data.temperature.toFixed(1);
+            document.getElementById('motorSpeed').textContent = Math.round(data.current_data.motor_speed);
+            document.getElementById('soc').textContent = data.current_data.soc.toFixed(1);
+
+            // Update Fault Categories
+            const catContainer = document.getElementById('faultCategories');
+            if (!data.fault_types || data.fault_types.length === 0 || data.fault_types[0] === 'NORMAL_OPERATION' || data.fault_types[0] === 'NORMAL') {
+                catContainer.innerHTML = '<span class="fault-category fault-normal">NORMAL</span>';
+            } else {
+                catContainer.innerHTML = data.fault_types.map(f => `<span class="fault-category">${f}</span>`).join('');
+            }
+
+            // Update Metrics Bars
+            document.getElementById('responseTimeText').textContent = data.response_time_ms.toFixed(0) + 'ms';
+            document.getElementById('responseTimeBar').style.width = (data.response_time_ms * 2) + '%'; // Scale for visual
+            
+            const efficiency = Math.max(0, 100 - (data.risk_probability * 100));
+            document.getElementById('efficiencyText').textContent = efficiency.toFixed(0) + '%';
+            document.getElementById('efficiencyBar').style.width = efficiency + '%';
+
+            // Update Chart
+            updateChart(data.time_step, data.risk_probability);
+        }
+
+        function updateChart(time, risk) {
+            timeLabels.push(time);
+            riskData.push(risk);
+            
+            if (timeLabels.length > maxDataPoints) {
+                timeLabels.shift();
+                riskData.shift();
+            }
+            riskChart.update('none');
+        }
+
+        // --- Control Functions ---
+        function startDetection() {
+            if (isRunning) return;
+            isRunning = true;
+            
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            
+            // Set initial UI state to 'Running' visual cues (even if 'Safe')
+            document.getElementById('statusIndicator').classList.remove('status-stopped');
+            
+            fetch('/api/sim/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'start' })
+            }).catch(() => {});
+
+            detectionInterval = setInterval(async () => {
+                try {
+                    const data = await fetchLatest();
+                    updateDisplay(data);
+                } catch (e) {
+                    // ignore transient errors
+                }
+            }, 500);
+            
+            showAlert('info', 'Detection Started', 'Monitoring sensor stream active.');
+        }
+
+        function stopDetection() {
+            if (!isRunning) return;
+            isRunning = false;
+            clearInterval(detectionInterval);
+
+            fetch('/api/sim/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'stop' })
+            }).catch(() => {});
+            
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            
+            // Visual pause state
+            document.getElementById('statusText').textContent = 'PAUSED';
+            document.getElementById('statusText').className = 'fw-bold mb-0 text-muted';
+            document.getElementById('statusIndicator').className = 'status-indicator status-stopped';
+            document.getElementById('statusIndicator').innerHTML = '<i class="fas fa-pause"></i>';
+            
+            showAlert('info', 'Paused', 'Data collection halted.');
+        }
+
+        function resetDetection() {
+            stopDetection();
+
+            fetch('/reset', { cache: 'no-store' }).catch(() => {});
+            
+            // Clear Data
+            stepCount = 0;
+            riskData = [];
+            timeLabels = [];
+            if (riskChart) riskChart.update();
+            
+            // Reset UI
+            document.getElementById('statusText').textContent = 'IDLE';
+            document.getElementById('statusIndicator').innerHTML = '<i class="fas fa-shield-alt"></i>';
+            document.getElementById('riskProbability').textContent = '0.0%';
+            document.getElementById('timeStep').textContent = '0';
+            
+            document.getElementById('voltage').textContent = '0.0';
+            document.getElementById('current').textContent = '0.0';
+            document.getElementById('temperature').textContent = '0.0';
+            document.getElementById('motorSpeed').textContent = '0';
+            document.getElementById('soc').textContent = '0.0';
+            
+            document.getElementById('faultCategories').innerHTML = '<span class="fault-category fault-normal">NORMAL</span>';
+            document.getElementById('responseTimeBar').style.width = '0%';
+            document.getElementById('efficiencyBar').style.width = '100%';
+        }
+
+        function triggerDemoFault() {
+            if (faultInjectionMode) return;
+            fetch('/api/demo-fault', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ steps: 6 })
+            }).catch(() => {});
+            showAlert('warning', 'Demo Fault Injection', 'Injecting scheduled fault cycle.');
+        }
+
+        function showAlert(type, title, msg) {
+            const container = document.getElementById('alertSection');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type} alert-dismissible fade show shadow-sm border-0`;
+            alert.innerHTML = `
+                <strong>${title}</strong> ${msg}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            container.appendChild(alert);
+            
+            // Remove after delay
+            setTimeout(() => {
+                alert.classList.remove('show');
+                setTimeout(() => alert.remove(), 200);
+            }, 4000);
+        }
+
+        // --- Init ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            // Optional: Auto-start
+            // startDetection(); 
+        });
+
+    </script>
+</body>
+</html>
